@@ -75,8 +75,33 @@ async function fetchXml(path: string, retryOn202 = false) {
   throw new Error(`BGG queued response never resolved for ${path}`)
 }
 
-export async function fetchCollection(username: string): Promise<CollectionItem[]> {
-  const xml = await fetchXml(`/collection?username=${encodeURIComponent(username)}&own=1&stats=1&excludesubtype=boardgameexpansion`, true)
+export async function fetchCollection(
+  username: string,
+  options: {
+    own?: boolean
+    trade?: boolean
+    wishlist?: boolean
+  } = { own: true }
+): Promise<CollectionItem[]> {
+  const params = new URLSearchParams({
+    username,
+    stats: "1",
+    excludesubtype: "boardgameexpansion",
+  })
+
+  if (options.own !== undefined) {
+    params.set("own", options.own ? "1" : "0")
+  }
+
+  if (options.trade) {
+    params.set("trade", "1")
+  }
+
+  if (options.wishlist) {
+    params.set("wishlist", "1")
+  }
+
+  const xml = await fetchXml(`/collection?${params.toString()}`, true)
   const parsed = parser.parse(xml)
   const items = arrayify(parsed.items?.item)
 
@@ -88,6 +113,9 @@ export async function fetchCollection(username: string): Promise<CollectionItem[
       image: valueOf(item.image) || undefined,
       thumbnail: valueOf(item.thumbnail) || undefined,
       own: item.status?.own === 1,
+      forTrade: item.status?.fortrade === 1 || item.status?.trade === 1,
+      wishlist: item.status?.wishlist === 1,
+      wishlistPriority: typeof item.status?.wishlistpriority === "number" ? item.status.wishlistpriority : null,
       userRating: item.stats?.rating?.value && item.stats.rating.value !== "N/A" ? Number(item.stats.rating.value) : undefined,
       bggAverageRating:
         item.stats?.rating?.average?.value && item.stats.rating.average.value !== "N/A"
@@ -99,7 +127,17 @@ export async function fetchCollection(username: string): Promise<CollectionItem[
           : undefined,
       numPlaysOwned: item.numplays ? Number(item.numplays) : undefined,
     }))
-    .filter((item) => item.own)
+    .filter((item) => {
+      if (options.wishlist) {
+        return Boolean(item.wishlist)
+      }
+
+      if (options.trade) {
+        return Boolean(item.forTrade)
+      }
+
+      return item.own
+    })
 }
 
 function parseRank(rankNode: unknown) {
@@ -146,6 +184,8 @@ export async function fetchGameDetails(ids: number[]): Promise<GameDetails[]> {
           rank: parseRank(item.statistics?.ratings?.ranks?.rank),
           usersRated: item.statistics?.ratings?.usersrated?.value ? Number(item.statistics.ratings.usersrated.value) : undefined,
           averageRating: item.statistics?.ratings?.average?.value ? Number(item.statistics.ratings.average.value) : undefined,
+          wantingCount: item.statistics?.ratings?.wanting?.value ? Number(item.statistics.ratings.wanting.value) : null,
+          wishingCount: item.statistics?.ratings?.wishing?.value ? Number(item.statistics.ratings.wishing.value) : null,
           marketPrice: marketPrice !== null && Number.isFinite(marketPrice) && marketPrice > 0 ? marketPrice : null,
           marketListings,
           inPrint: item.statistics?.ratings?.owned?.value ? Number(item.statistics.ratings.owned.value) > 1000 : null,

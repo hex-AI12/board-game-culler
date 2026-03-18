@@ -1,6 +1,7 @@
 "use client"
 
-import { Check, SkipForward, TriangleAlert, X } from "lucide-react"
+import Link from "next/link"
+import { Check, Coins, HandCoins, SkipForward, TriangleAlert, X } from "lucide-react"
 
 import { CullScoreBadge } from "@/components/cull-score-badge"
 import { Badge } from "@/components/ui/badge"
@@ -8,7 +9,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import type { Decision, GameRecord } from "@/lib/types"
-import { formatDate, round } from "@/lib/utils"
+import { formatCurrency, formatDate, round } from "@/lib/utils"
 
 const actions: Array<{ decision: Decision; label: string; icon: React.ReactNode; className: string }> = [
   { decision: "keep", label: "Keep", icon: <Check className="size-4" />, className: "bg-emerald-500/20 text-emerald-200 hover:bg-emerald-500/30" },
@@ -36,9 +37,13 @@ export function DecisionCard({
           {game.image || game.thumbnail ? <img src={game.image ?? game.thumbnail} alt={game.name} className="h-full w-full object-cover" /> : <div className="flex h-full items-center justify-center text-muted-foreground">No image</div>}
           <div className="absolute inset-0 bg-linear-to-t from-background via-background/25 to-transparent" />
           <div className="absolute inset-x-0 bottom-0 p-6">
-            <div className="mb-3 flex items-center gap-2">
+            <div className="mb-3 flex flex-wrap items-center gap-2">
               <CullScoreBadge score={game.cullScore} />
               <Badge className="bg-white/10">{game.cullScoreLabel}</Badge>
+              <Badge className="bg-primary/15 text-primary">
+                <Coins className="mr-1 size-3" />
+                {formatCurrency(game.estimatedTradeValue)} trade est.
+              </Badge>
             </div>
             <h2 className="text-3xl font-semibold text-foreground">{game.name}</h2>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">{game.description?.slice(0, 240) || "No description from BGG."}</p>
@@ -100,6 +105,12 @@ export function DecisionCard({
             <Button variant="outline" onClick={onSkip}>
               <SkipForward className="size-4" />
               Skip
+            </Button>
+            <Button variant="outline">
+              <Link href={`/trades?focus=${game.id}`}>
+                <HandCoins className="size-4" />
+                Trade helper
+              </Link>
             </Button>
           </CardFooter>
         </div>

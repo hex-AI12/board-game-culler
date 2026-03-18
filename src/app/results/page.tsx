@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ClientOnly } from "@/components/client-only"
 import { useCollection } from "@/hooks/use-collection"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { decodeSharePayload, encodeSharePayload } from "@/lib/storage"
 import type { Decision, GameRecord, SharedResultsPayload } from "@/lib/types"
 import { downloadFile, formatCurrency } from "@/lib/utils"
@@ -24,6 +25,8 @@ function ResultsPageInner() {
   const searchParams = useSearchParams()
   const { dataset, decisions, resetDecisions, decisionGroups } = useCollection()
   const [dialogOpen, setDialogOpen] = useState(false)
+
+  useDocumentTitle("Results · Board Game Shelf")
 
   const sharedPayload = useMemo(() => {
     const share = searchParams.get("share")
@@ -54,7 +57,7 @@ function ResultsPageInner() {
         <h1 className="text-3xl font-semibold">No results yet</h1>
         <p className="mt-3 text-muted-foreground">Make some keep / maybe / cull decisions first, then come back for exports and a sell list.</p>
         <Button className="mt-6">
-          <Link href="/decide">Start deciding</Link>
+          <Link href="/culler">Start culling</Link>
         </Button>
       </div>
     )
@@ -66,7 +69,7 @@ function ResultsPageInner() {
       ["name", "bgg_link", "your_rating", "cull_score", "decision"],
       ...decidedGames.map((game) => [game.name, game.bggUrl, game.userRating ?? "", game.cullScore, decisions[String(game.id)]]),
     ]
-    downloadFile("board-game-culler-results.csv", rows.map((row) => row.join(",")).join("\n"), "text/csv;charset=utf-8")
+    downloadFile("board-game-shelf-results.csv", rows.map((row) => row.join(",")).join("\n"), "text/csv;charset=utf-8")
     toast.success("CSV exported.")
   }
 

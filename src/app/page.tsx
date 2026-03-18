@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { ArrowRight, DatabaseZap, Dice5, Sparkles } from "lucide-react"
+import { ArrowRight, BarChart3, DatabaseZap, HeartHandshake, LibraryBig, ListCollapse, Sparkles, WandSparkles } from "lucide-react"
 import { toast } from "sonner"
 
 import { LoadingState } from "@/components/loading-state"
@@ -13,15 +13,34 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useCollection } from "@/hooks/use-collection"
+import { useDocumentTitle } from "@/hooks/use-document-title"
 import { loadCollectionBundle } from "@/lib/load-collection"
 import { loadUsername, saveUsername } from "@/lib/storage"
 import type { LoadingStage } from "@/lib/types"
-import { formatDate } from "@/lib/utils"
+import { formatCurrency, formatDate } from "@/lib/utils"
 
 const highlights = [
-  "Cull scoring balances plays, ratings, redundancy, weight, and reacquisition risk.",
-  "Decision mode gives you quick keep / maybe / cull triage with swipe gestures.",
-  "Everything stays local in your browser, with CSV export and shareable results.",
+  {
+    icon: <LibraryBig className="size-5" />,
+    text: "Sync your BGG collection, keep it cached locally, and browse the whole shelf with score-aware filters.",
+  },
+  {
+    icon: <WandSparkles className="size-5" />,
+    text: "Pick tonight’s game with quick filters, a spinner wheel, and head-to-head bracket rounds.",
+  },
+  {
+    icon: <ListCollapse className="size-5" />,
+    text: "Cull with swipe cards or a fast table mode, then turn those decisions into a clean trade pile.",
+  },
+]
+
+const featureLinks = [
+  { href: "/collection", title: "Collection", description: "Browse, filter, sort, and value your full shelf.", icon: <LibraryBig className="size-4" /> },
+  { href: "/play", title: "Play", description: "Game Night Picker with spinner and head-to-head picks.", icon: <WandSparkles className="size-4" /> },
+  { href: "/culler", title: "Culler", description: "Swipe triage plus a quick-cull table for bulk decisions.", icon: <ListCollapse className="size-4" /> },
+  { href: "/stats", title: "Stats", description: "Shelf analytics, bar charts, top 10s, and collection gaps.", icon: <BarChart3 className="size-4" /> },
+  { href: "/wishlist", title: "Wishlist", description: "See wishlist overlap warnings and priority picks from BGG.", icon: <Sparkles className="size-4" /> },
+  { href: "/trades", title: "Trades", description: "Manage your trade pile, export posts, and track value.", icon: <HeartHandshake className="size-4" /> },
 ]
 
 export default function HomePage() {
@@ -30,6 +49,8 @@ export default function HomePage() {
   const [username, setUsername] = useState("")
   const [loading, setLoading] = useState(false)
   const [stage, setStage] = useState<LoadingStage | null>(null)
+
+  useDocumentTitle("Board Game Shelf")
 
   useEffect(() => {
     setUsername(loadUsername())
@@ -43,6 +64,7 @@ export default function HomePage() {
     return {
       totalGames: dataset.games.length,
       cullCandidates: dataset.games.filter((game) => game.cullScore >= 60).length,
+      totalValue: dataset.games.reduce((sum, game) => sum + game.estimatedTradeValue, 0),
     }
   }, [dataset])
 
@@ -59,7 +81,7 @@ export default function HomePage() {
       const nextDataset = await loadCollectionBundle(username.trim(), setStage, dataset?.username === username.trim() ? dataset : null)
       importDataset(nextDataset)
       toast.success(`Loaded ${nextDataset.games.length} games for ${username.trim()}.`)
-      router.push("/dashboard")
+      router.push("/collection")
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to load your collection.")
     } finally {
@@ -73,25 +95,23 @@ export default function HomePage() {
         <div className="space-y-6">
           <Badge className="bg-primary/15 px-3 py-1 text-primary">
             <Sparkles className="mr-2 size-3" />
-            Dark mode by default. Data local by design.
+            Board Game Shelf · Your collection, sorted.
           </Badge>
           <div className="space-y-4">
-            <h1 className="max-w-3xl text-4xl font-semibold tracking-tight text-foreground sm:text-6xl">
-              Decide which board games deserve shelf space.
+            <h1 className="max-w-4xl text-4xl font-semibold tracking-tight text-foreground sm:text-6xl">
+              Manage your whole board game shelf in one place.
             </h1>
             <p className="max-w-2xl text-base leading-7 text-muted-foreground sm:text-lg">
-              Pull your BGG collection, score every game for cull-worthiness, and work through the pile with a tactile collector-first workflow.
+              Pull your BGG collection, find what to play tonight, analyze the shape of your shelf, work the cull pile, track your wishlist, and prep trades without leaving the app.
             </p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">
-            {highlights.map((item, index) => (
-              <Card key={item} className="border-white/10 bg-card/60">
+            {highlights.map((item) => (
+              <Card key={item.text} className="border-white/10 bg-card/60">
                 <CardContent className="p-5 text-sm text-muted-foreground">
-                  <div className="mb-3 flex size-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">
-                    {index === 0 ? <DatabaseZap className="size-5" /> : <Dice5 className="size-5" />}
-                  </div>
-                  {item}
+                  <div className="mb-3 flex size-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">{item.icon}</div>
+                  {item.text}
                 </CardContent>
               </Card>
             ))}
@@ -105,7 +125,7 @@ export default function HomePage() {
             <Tabs defaultValue="sync" className="w-full">
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="sync">Fresh sync</TabsTrigger>
-                <TabsTrigger value="cached">Cached collection</TabsTrigger>
+                <TabsTrigger value="cached">Cached shelf</TabsTrigger>
               </TabsList>
               <TabsContent value="sync">
                 <Card className="border-white/10 bg-card/75 shadow-2xl shadow-black/20">
@@ -119,11 +139,11 @@ export default function HomePage() {
                       <Input placeholder="e.g. colewerq" value={username} onChange={(event) => setUsername(event.target.value)} />
                     </div>
                     <Button className="w-full justify-center" onClick={handleLoadCollection}>
-                      Load collection
+                      Load shelf
                       <ArrowRight className="size-4" />
                     </Button>
                     <p className="text-xs text-muted-foreground">
-                      Uses `process.env.BGG_API_KEY` in the API layer, retries queued collection requests, and caches results in localStorage.
+                      Uses `process.env.BGG_API_KEY` in the API layer, retries queued collection requests, and caches everything locally after the first load.
                     </p>
                   </CardContent>
                 </Card>
@@ -142,12 +162,12 @@ export default function HomePage() {
                           <div className="mt-2 grid gap-3 text-sm text-muted-foreground sm:grid-cols-2">
                             <div>{cachedSummary.totalGames} total games</div>
                             <div>{cachedSummary.cullCandidates} hot cull candidates</div>
+                            <div>{formatCurrency(cachedSummary.totalValue)} estimated value</div>
                             <div>Last sync {formatDate(dataset.loadedAt)}</div>
-                            <div>{dataset.previousLoadedAt ? `Previous sync ${formatDate(dataset.previousLoadedAt)}` : "First import"}</div>
                           </div>
                         </div>
                         <div className="flex gap-3">
-                          <Button className="flex-1" onClick={() => router.push("/dashboard")}>Open dashboard</Button>
+                          <Button className="flex-1" onClick={() => router.push("/collection")}>Open collection</Button>
                           <Button variant="outline" className="flex-1" onClick={handleLoadCollection}>
                             Refresh data
                           </Button>
@@ -166,20 +186,23 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-3">
-        <LinkCard href="/dashboard" title="Dashboard" description="Explore the full collection, sort by cull score, and slice by filters." />
-        <LinkCard href="/decide" title="Decision mode" description="Go card-by-card with swipe gestures and a score breakdown." />
-        <LinkCard href="/results" title="Results + export" description="Review keep / maybe / cull groups, export CSV, and share a link." />
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {featureLinks.map((item) => (
+          <LinkCard key={item.href} href={item.href} title={item.title} description={item.description} icon={item.icon} />
+        ))}
       </section>
     </div>
   )
 }
 
-function LinkCard({ href, title, description }: { href: string; title: string; description: string }) {
+function LinkCard({ href, title, description, icon }: { href: string; title: string; description: string; icon: React.ReactNode }) {
   return (
     <Link href={href} className="group rounded-3xl border border-white/10 bg-card/60 p-5 transition hover:border-primary/30 hover:bg-card">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="text-lg font-semibold">{title}</h2>
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-2xl bg-primary/15 text-primary">{icon}</div>
+          <h2 className="text-lg font-semibold">{title}</h2>
+        </div>
         <ArrowRight className="size-4 text-muted-foreground transition group-hover:translate-x-1 group-hover:text-primary" />
       </div>
       <p className="mt-3 text-sm leading-6 text-muted-foreground">{description}</p>

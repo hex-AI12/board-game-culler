@@ -1,14 +1,14 @@
 "use client"
 
 import Link from "next/link"
-import { ExternalLink, Layers3, Star, Users } from "lucide-react"
+import { Clock3, ExternalLink, Layers3, Star, Users } from "lucide-react"
 
 import { CullScoreBadge } from "@/components/cull-score-badge"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import type { Decision, GameRecord, ViewMode } from "@/lib/types"
-import { cn, formatDate, round } from "@/lib/utils"
+import { cn, formatCurrency, formatDate, round } from "@/lib/utils"
 
 const decisionTone: Record<Decision, string> = {
   keep: "bg-emerald-500/15 text-emerald-200 border-emerald-500/20",
@@ -16,14 +16,30 @@ const decisionTone: Record<Decision, string> = {
   cull: "bg-red-500/15 text-red-200 border-red-500/20",
 }
 
+function formatPlayTime(game: GameRecord) {
+  if (!game.minPlayTime && !game.maxPlayTime) {
+    return "—"
+  }
+
+  if (game.minPlayTime && game.maxPlayTime && game.minPlayTime !== game.maxPlayTime) {
+    return `${game.minPlayTime}-${game.maxPlayTime} min`
+  }
+
+  return `${game.maxPlayTime ?? game.minPlayTime} min`
+}
+
 export function GameCard({
   game,
   viewMode,
   decision,
+  showPlayTime = false,
+  action,
 }: {
   game: GameRecord
   viewMode: ViewMode
   decision?: Decision
+  showPlayTime?: boolean
+  action?: React.ReactNode
 }) {
   return (
     <Card
@@ -32,13 +48,9 @@ export function GameCard({
         viewMode === "list" && "flex flex-col sm:flex-row"
       )}
     >
-      <div className={cn("relative overflow-hidden bg-black/30", viewMode === "list" ? "sm:w-48" : "aspect-[4/3] w-full")}> 
+      <div className={cn("relative overflow-hidden bg-black/30", viewMode === "list" ? "sm:w-48" : "aspect-[4/3] w-full")}>
         {game.image || game.thumbnail ? (
-          <img
-            src={game.image ?? game.thumbnail}
-            alt={game.name}
-            className="h-full w-full object-cover transition duration-500 group-hover:scale-105"
-          />
+          <img src={game.image ?? game.thumbnail} alt={game.name} className="h-full w-full object-cover transition duration-500 group-hover:scale-105" />
         ) : (
           <div className="flex h-full min-h-48 items-center justify-center bg-linear-to-br from-zinc-900 to-zinc-800 text-zinc-500">
             <Layers3 className="size-10" />
@@ -56,10 +68,10 @@ export function GameCard({
             <h3 className="text-lg font-semibold text-foreground">{game.name}</h3>
             <p className="text-sm text-muted-foreground">{game.yearPublished ?? "Unknown year"}</p>
           </div>
-          <Button variant="ghost" size="icon" render={<Link href={game.bggUrl} target="_blank" rel="noreferrer" aria-label={`Open ${game.name} on BGG`} />}>
-
-
-
+          <Button variant="ghost" size="icon" aria-label={`Open ${game.name} on BGG`}>
+            <Link href={game.bggUrl} target="_blank" rel="noreferrer">
+              <ExternalLink className="size-4" />
+            </Link>
           </Button>
         </div>
 
@@ -67,9 +79,11 @@ export function GameCard({
           <Metric icon={<Star className="size-4" />} label="Your rating" value={game.userRating ? `${round(game.userRating, 1)}/10` : "Unrated"} />
           <Metric icon={<Star className="size-4" />} label="BGG average" value={game.averageRating ? round(game.averageRating, 1) : "—"} />
           <Metric icon={<Users className="size-4" />} label="Players" value={game.minPlayers && game.maxPlayers ? `${game.minPlayers}-${game.maxPlayers}` : "—"} />
+          {showPlayTime ? <Metric icon={<Clock3 className="size-4" />} label="Play time" value={formatPlayTime(game)} /> : null}
           <Metric icon={<Layers3 className="size-4" />} label="Play count" value={game.playCount} />
-          <Metric icon={<Layers3 className="size-4" />} label="Last played" value={formatDate(game.lastPlayed)} />
           <Metric icon={<Layers3 className="size-4" />} label="Weight" value={game.averageWeight ? round(game.averageWeight, 1) : "—"} />
+          <Metric icon={<Layers3 className="size-4" />} label="Last played" value={formatDate(game.lastPlayed)} />
+          <Metric icon={<Layers3 className="size-4" />} label="Trade est." value={formatCurrency(game.estimatedTradeValue)} />
         </div>
 
         <div className="flex flex-wrap gap-2">
@@ -79,12 +93,14 @@ export function GameCard({
             </Badge>
           ))}
           {game.scoreDelta ? (
-            <Badge className={cn("border", game.scoreDelta > 0 ? "border-red-500/20 bg-red-500/10 text-red-200" : "border-emerald-500/20 bg-emerald-500/10 text-emerald-200") }>
+            <Badge className={cn("border", game.scoreDelta > 0 ? "border-red-500/20 bg-red-500/10 text-red-200" : "border-emerald-500/20 bg-emerald-500/10 text-emerald-200")}>
               {game.scoreDelta > 0 ? "+" : ""}
               {game.scoreDelta} since last import
             </Badge>
           ) : null}
         </div>
+
+        {action ? <div className="mt-auto flex flex-wrap gap-2">{action}</div> : null}
       </CardContent>
     </Card>
   )

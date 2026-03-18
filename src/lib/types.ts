@@ -9,6 +9,9 @@ export interface CollectionItem {
   image?: string
   thumbnail?: string
   own: boolean
+  forTrade?: boolean
+  wishlist?: boolean
+  wishlistPriority?: number | null
   userRating?: number
   bggAverageRating?: number
   averageWeight?: number
@@ -31,6 +34,8 @@ export interface GameDetails {
   rank?: number | null
   usersRated?: number
   averageRating?: number
+  wantingCount?: number | null
+  wishingCount?: number | null
   marketPrice?: number | null
   marketListings?: number | null
   inPrint?: boolean | null
@@ -74,6 +79,17 @@ export interface CollectionDataset {
   loadedAt: string
   previousLoadedAt?: string
   games: GameRecord[]
+}
+
+export interface WishlistRecord extends CollectionItem, GameDetails {
+  bggUrl: string
+  estimatedPrice: number | null
+}
+
+export interface WishlistDataset {
+  username: string
+  loadedAt: string
+  items: WishlistRecord[]
 }
 
 export type DecisionMap = Record<string, Decision>

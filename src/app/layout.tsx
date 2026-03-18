@@ -17,8 +17,11 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: "Board Game Culler",
-  description: "Triage your board game collection with BGG data",
+  title: {
+    default: "Board Game Shelf",
+    template: "%s · Board Game Shelf",
+  },
+  description: "Your collection, sorted. Sync BGG data, pick what to play, analyze your shelf, manage wishlist overlap, and prep trades.",
 }
 
 export default function RootLayout({
@@ -27,11 +30,7 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
-      suppressHydrationWarning
-    >
+    <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
       <body className="flex min-h-full flex-col bg-background text-foreground">
         <ThemeProvider>
           <CollectionProvider>
