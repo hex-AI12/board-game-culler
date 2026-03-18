@@ -1,14 +1,20 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { BarChart3, HeartHandshake, LibraryBig, ListCollapse, Menu, Swords, Trophy, WandSparkles } from "lucide-react"
+import { toast } from "sonner"
 
+import { BggLoginDialog } from "@/components/bgg-login-dialog"
+import { ClientOnly } from "@/components/client-only"
 import { ThemeToggle } from "@/components/theme-toggle"
 import { Badge } from "@/components/ui/badge"
 import { Button, buttonVariants } from "@/components/ui/button"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useCollection } from "@/hooks/use-collection"
+import { useBggSession } from "@/hooks/use-bgg-session"
+import { OPEN_BGG_LOGIN_EVENT } from "@/lib/bgg-write-client"
 import { cn } from "@/lib/utils"
 
 const navItems = [
@@ -19,6 +25,53 @@ const navItems = [
   { href: "/wishlist", label: "Wishlist", icon: Trophy },
   { href: "/trades", label: "Trades", icon: HeartHandshake },
 ]
+
+function BggConnectionControls() {
+  const { clearSession, hydrated, isLoggedIn } = useBggSession()
+  const [dialogOpen, setDialogOpen] = useState(false)
+
+  useEffect(() => {
+    function handleOpenLogin() {
+      setDialogOpen(true)
+    }
+
+    window.addEventListener(OPEN_BGG_LOGIN_EVENT, handleOpenLogin)
+    return () => window.removeEventListener(OPEN_BGG_LOGIN_EVENT, handleOpenLogin)
+  }, [])
+
+  if (!hydrated) {
+    return null
+  }
+
+  return (
+    <>
+      {isLoggedIn ? (
+        <>
+          <Badge className="hidden bg-emerald-500/15 text-emerald-200 md:inline-flex">
+            <span className="mr-2 size-2 rounded-full bg-emerald-400" />
+            BGG Connected
+          </Badge>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              clearSession()
+              toast.success("Disconnected from BoardGameGeek.")
+            }}
+          >
+            Disconnect
+          </Button>
+        </>
+      ) : (
+        <Button variant="outline" size="sm" onClick={() => setDialogOpen(true)}>
+          Connect BGG
+        </Button>
+      )}
+
+      <BggLoginDialog open={dialogOpen} onOpenChange={setDialogOpen} />
+    </>
+  )
+}
 
 export function AppHeader() {
   const pathname = usePathname()
@@ -73,7 +126,7 @@ export function AppHeader() {
                 const Icon = item.icon
 
                 return (
-                  <DropdownMenuItem key={item.href} className={cn(active && "bg-accent")}> 
+                  <DropdownMenuItem key={item.href} className={cn(active && "bg-accent")}>
                     <Link href={item.href} className="flex w-full items-center justify-between gap-3">
                       <span className="flex items-center gap-2">
                         <Icon className="size-4" />
@@ -96,6 +149,9 @@ export function AppHeader() {
           <Button variant="ghost" size="sm" className="hidden md:inline-flex">
             <Link href="/results">Results</Link>
           </Button>
+          <ClientOnly fallback={null}>
+            <BggConnectionControls />
+          </ClientOnly>
           <ThemeToggle />
         </div>
       </div>

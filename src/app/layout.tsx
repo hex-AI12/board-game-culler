@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { Toaster } from "@/components/ui/sonner"
 import { AppHeader } from "@/components/app-header"
 import { ThemeProvider } from "@/components/providers/theme-provider"
+import { BggSessionProvider } from "@/hooks/use-bgg-session"
 import { CollectionProvider } from "@/hooks/use-collection"
 import "./globals.css"
 
@@ -33,11 +34,13 @@ export default function RootLayout({
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`} suppressHydrationWarning>
       <body className="flex min-h-full flex-col bg-background text-foreground">
         <ThemeProvider>
-          <CollectionProvider>
-            <AppHeader />
-            <main className="flex-1">{children}</main>
-            <Toaster />
-          </CollectionProvider>
+          <BggSessionProvider>
+            <CollectionProvider>
+              <AppHeader />
+              <main className="flex-1">{children}</main>
+              <Toaster />
+            </CollectionProvider>
+          </BggSessionProvider>
         </ThemeProvider>
       </body>
     </html>

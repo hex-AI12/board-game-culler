@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic"
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import { Copy, Download, RefreshCcw } from "lucide-react"
+import { Copy, Download, RefreshCcw, RefreshCw } from "lucide-react"
 import { toast } from "sonner"
 
 import { ClientOnly } from "@/components/client-only"
@@ -14,16 +14,21 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useBggActions } from "@/hooks/use-bgg-actions"
+import { useBggSession } from "@/hooks/use-bgg-session"
 import { useCollection } from "@/hooks/use-collection"
 import { useDocumentTitle } from "@/hooks/use-document-title"
 import type { CollectionItem, GameRecord } from "@/lib/types"
 import { downloadFile, formatCurrency } from "@/lib/utils"
 
 function TradesPageInner() {
-  const { dataset, decisionGroups, hydrated } = useCollection()
+  const { dataset, decisionGroups, hydrated, updateGame } = useCollection()
+  const { isLoggedIn } = useBggSession()
+  const { handleBggError, updateCollectionStatus } = useBggActions()
   const searchParams = useSearchParams()
   const [tradeCollection, setTradeCollection] = useState<CollectionItem[]>([])
   const [loading, setLoading] = useState(false)
+  const [syncingBatch, setSyncingBatch] = useState(false)
   const [sortBy, setSortBy] = useState("value")
 
   useDocumentTitle("Trades · Board Game Shelf")
@@ -52,8 +57,9 @@ function TradesPageInner() {
     loadTradeCollection()
   }, [dataset?.username])
 
+  const bggTradeIds = useMemo(() => new Set(tradeCollection.map((item) => item.id)), [tradeCollection])
+
   const tradeGames = useMemo(() => {
-    const bggTradeIds = new Set(tradeCollection.map((item) => item.id))
     const merged = new Map<number, GameRecord>()
 
     for (const game of decisionGroups.cull) {
@@ -79,7 +85,11 @@ function TradesPageInner() {
           return right.estimatedTradeValue - left.estimatedTradeValue
       }
     })
-  }, [dataset?.games, decisionGroups.cull, sortBy, tradeCollection])
+  }, [bggTradeIds, dataset?.games, decisionGroups.cull, sortBy])
+
+  const unsyncedCullGames = useMemo(() => {
+    return decisionGroups.cull.filter((game) => !bggTradeIds.has(game.id) && !game.forTrade)
+  }, [bggTradeIds, decisionGroups.cull])
 
   const totalValue = tradeGames.reduce((sum, game) => sum + game.estimatedTradeValue, 0)
   const focusId = Number(searchParams.get("focus") ?? 0)
@@ -111,6 +121,57 @@ function TradesPageInner() {
     ]
     downloadFile("board-game-shelf-trades.csv", rows.map((row) => row.join(",")).join("\n"), "text/csv;charset=utf-8")
     toast.success("Trade CSV exported.")
+  }
+
+  async function syncToBgg() {
+    if (!unsyncedCullGames.length) {
+      toast.success("Everything in your cull pile is already marked for trade.")
+      return
+    }
+
+    setSyncingBatch(true)
+
+    try {
+      const results = await Promise.allSettled(
+        unsyncedCullGames.map(async (game) => {
+          await updateCollectionStatus({ objectid: game.id, objecttype: "thing", fortrade: true })
+          return game
+        })
+      )
+
+      const syncedGames = results
+        .filter((result): result is PromiseFulfilledResult<GameRecord> => result.status === "fulfilled")
+        .map((result) => result.value)
+      const firstFailure = results.find((result): result is PromiseRejectedResult => result.status === "rejected")
+
+      const failedCount = results.length - syncedGames.length
+
+      if (!syncedGames.length) {
+        throw firstFailure?.reason ?? new Error("BGG did not accept any of the selected trade updates.")
+      }
+
+      for (const game of syncedGames) {
+        updateGame(game.id, { forTrade: true })
+      }
+
+      setTradeCollection((current) => {
+        const merged = new Map(current.map((item) => [item.id, item]))
+        for (const game of syncedGames) {
+          merged.set(game.id, game)
+        }
+        return [...merged.values()]
+      })
+
+      toast.success(
+        failedCount
+          ? `Synced ${syncedGames.length} games to BGG. ${failedCount} still need attention.`
+          : `Synced ${syncedGames.length} culled games to BGG.`
+      )
+    } catch (error) {
+      handleBggError(error, "Unable to sync your cull pile to BGG.")
+    } finally {
+      setSyncingBatch(false)
+    }
   }
 
   return (
@@ -160,6 +221,10 @@ function TradesPageInner() {
               <Copy className="size-4" />
               Copy GeekList
             </Button>
+            <Button variant="outline" onClick={syncToBgg} disabled={!isLoggedIn || syncingBatch || !unsyncedCullGames.length}>
+              <RefreshCw className={`size-4 ${syncingBatch ? "animate-spin" : ""}`} />
+              {syncingBatch ? "Syncing..." : `Sync to BGG${unsyncedCullGames.length ? ` (${unsyncedCullGames.length})` : ""}`}
+            </Button>
             <Button onClick={exportCsv}>
               <Download className="size-4" />
               Export CSV
@@ -182,6 +247,7 @@ function TradesPageInner() {
                       <h2 className="text-lg font-semibold">{game.name}</h2>
                       <Badge className="bg-primary/15 text-primary">{formatCurrency(game.estimatedTradeValue)}</Badge>
                       <Badge className="bg-white/8">Demand: {game.wantingCount ?? 0}</Badge>
+                      {game.forTrade || bggTradeIds.has(game.id) ? <Badge className="bg-emerald-500/15 text-emerald-200">BGG trade synced</Badge> : null}
                     </div>
                     <div className="mt-1 text-sm text-muted-foreground">{game.yearPublished ?? "Unknown year"} · Cull score {game.cullScore} · {game.marketListings ?? 0} current listings</div>
                   </div>

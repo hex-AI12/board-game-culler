@@ -13,6 +13,8 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { useBggActions } from "@/hooks/use-bgg-actions"
+import { useBggSession } from "@/hooks/use-bgg-session"
 import { useCollection } from "@/hooks/use-collection"
 import { useDocumentTitle } from "@/hooks/use-document-title"
 import { loadUsername, loadWishlistCache, saveWishlistCache } from "@/lib/storage"
@@ -28,8 +30,11 @@ const sortOptions = [
 
 function WishlistPageInner() {
   const { dataset, hydrated } = useCollection()
+  const { isLoggedIn } = useBggSession()
+  const { handleBggError, updateCollectionStatus } = useBggActions()
   const [wishlist, setWishlist] = useState<WishlistDataset | null>(null)
   const [loading, setLoading] = useState(false)
+  const [markingOwnedId, setMarkingOwnedId] = useState<number | null>(null)
   const [sortBy, setSortBy] = useState<(typeof sortOptions)[number][0]>("priority")
   const [playerFilter, setPlayerFilter] = useState("any")
   const [weightFilter, setWeightFilter] = useState("any")
@@ -119,6 +124,34 @@ function WishlistPageInner() {
     }
   }
 
+  async function handleMarkOwned(item: WishlistRecord) {
+    setMarkingOwnedId(item.id)
+
+    try {
+      await updateCollectionStatus({ objectid: item.id, objecttype: "thing", own: true, wishlist: false })
+
+      setWishlist((current) => {
+        if (!current) {
+          return current
+        }
+
+        const next = {
+          ...current,
+          items: current.items.filter((entry) => entry.id !== item.id),
+        }
+
+        saveWishlistCache(next)
+        return next
+      })
+
+      toast.success(`${item.name} is now marked as owned on BGG.`)
+    } catch (error) {
+      handleBggError(error, "Unable to mark this wishlist game as owned.")
+    } finally {
+      setMarkingOwnedId(null)
+    }
+  }
+
   if (!hydrated) {
     return <div className="p-10 text-sm text-muted-foreground">Preparing wishlist...</div>
   }
@@ -191,7 +224,7 @@ function WishlistPageInner() {
       ) : items.length ? (
         <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {items.map((item) => (
-            <WishlistCard key={item.id} item={item} />
+            <WishlistCard key={item.id} item={item} canMarkOwned={isLoggedIn} isMarkingOwned={markingOwnedId === item.id} onMarkOwned={handleMarkOwned} />
           ))}
         </div>
       ) : (
@@ -203,7 +236,17 @@ function WishlistPageInner() {
   )
 }
 
-function WishlistCard({ item }: { item: WishlistRecord & { overlap: ReturnType<typeof bestOverlap> } }) {
+function WishlistCard({
+  item,
+  canMarkOwned,
+  isMarkingOwned,
+  onMarkOwned,
+}: {
+  item: WishlistRecord & { overlap: ReturnType<typeof bestOverlap> }
+  canMarkOwned: boolean
+  isMarkingOwned: boolean
+  onMarkOwned: (item: WishlistRecord) => void
+}) {
   return (
     <Card className="overflow-hidden border-white/10 bg-card/75">
       <div className="aspect-[4/3] bg-black/30">
@@ -242,9 +285,11 @@ function WishlistCard({ item }: { item: WishlistRecord & { overlap: ReturnType<t
           <Button variant="outline">
             <Link href={item.bggUrl} target="_blank" rel="noreferrer">View on BGG</Link>
           </Button>
-          <Button>
-            <Link href={item.bggUrl} target="_blank" rel="noreferrer">Move to owned on BGG</Link>
-          </Button>
+          {canMarkOwned ? (
+            <Button onClick={() => onMarkOwned(item)} disabled={isMarkingOwned}>
+              {isMarkingOwned ? "Syncing..." : "Mark as owned"}
+            </Button>
+          ) : null}
         </div>
       </CardContent>
     </Card>

@@ -5,21 +5,29 @@ export const dynamic = "force-dynamic"
 import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { ArrowRight, RefreshCcw } from "lucide-react"
+import { toast } from "sonner"
 
 import { ClientOnly } from "@/components/client-only"
 import { DecisionCard } from "@/components/decision-card"
 import { EmptyState } from "@/components/empty-state"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { useBggActions } from "@/hooks/use-bgg-actions"
+import { useBggSession } from "@/hooks/use-bgg-session"
 import { useCollection } from "@/hooks/use-collection"
 import { useDocumentTitle } from "@/hooks/use-document-title"
-import type { Decision } from "@/lib/types"
+import type { Decision, GameRecord } from "@/lib/types"
 import { formatCurrency } from "@/lib/utils"
 
 function CullerPageInner() {
-  const { dataset, decisions, hydrated, reviewedCount, setDecision } = useCollection()
+  const { dataset, decisions, hydrated, reviewedCount, setDecision, updateGame } = useCollection()
+  const { isLoggedIn } = useBggSession()
+  const { handleBggError, updateCollectionStatus } = useBggActions()
   const [queue, setQueue] = useState<number[]>([])
+  const [tradePromptGame, setTradePromptGame] = useState<GameRecord | null>(null)
+  const [syncingTrade, setSyncingTrade] = useState(false)
   const touchStart = useRef<{ x: number; y: number } | null>(null)
 
   useDocumentTitle("Culler · Board Game Shelf")
@@ -43,10 +51,25 @@ function CullerPageInner() {
     return <EmptyState title="No collection loaded" description="Load your collection from the setup page to start culling." />
   }
 
-  function handleDecision(decision: Decision) {
-    if (!game) return
-    setDecision(game.id, decision)
-    setQueue((current) => current.slice(1))
+  function finalizeDecision(gameId: number, decision: Decision) {
+    setDecision(gameId, decision)
+
+    if (queue[0] === gameId) {
+      setQueue((current) => current.slice(1))
+    }
+  }
+
+  function handleDecision(nextDecision: Decision, targetGame = game) {
+    if (!targetGame) {
+      return
+    }
+
+    if (nextDecision === "cull" && isLoggedIn && !targetGame.forTrade) {
+      setTradePromptGame(targetGame)
+      return
+    }
+
+    finalizeDecision(targetGame.id, nextDecision)
   }
 
   function handleSkip() {
@@ -78,118 +101,168 @@ function CullerPageInner() {
     }
   }
 
+  async function handleCullAndTrade() {
+    if (!tradePromptGame) {
+      return
+    }
+
+    setSyncingTrade(true)
+
+    try {
+      await updateCollectionStatus({ objectid: tradePromptGame.id, objecttype: "thing", fortrade: true })
+      updateGame(tradePromptGame.id, { forTrade: true })
+      finalizeDecision(tradePromptGame.id, "cull")
+      toast.success(`${tradePromptGame.name} was culled and marked for trade on BGG.`)
+      setTradePromptGame(null)
+    } catch (error) {
+      handleBggError(error, "Unable to sync this cull to BGG.")
+    } finally {
+      setSyncingTrade(false)
+    }
+  }
+
+  function handleCullOnly() {
+    if (!tradePromptGame) {
+      return
+    }
+
+    finalizeDecision(tradePromptGame.id, "cull")
+    setTradePromptGame(null)
+  }
+
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-4 py-8 sm:px-6 lg:px-8">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold">Shelf culler</h1>
-          <p className="text-sm text-muted-foreground">Swipe right to keep, left to cull, up for maybe — or switch to Quick Cull when you want a full-table pass.</p>
+    <>
+      <div className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-4 px-4 py-8 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h1 className="text-3xl font-semibold">Shelf culler</h1>
+            <p className="text-sm text-muted-foreground">Swipe right to keep, left to cull, up for maybe — or switch to Quick Cull when you want a full-table pass.</p>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <Button variant="outline">
+              <Link href="/collection">Back to collection</Link>
+            </Button>
+            <Button variant="outline">
+              <Link href="/trades">Open trades</Link>
+            </Button>
+          </div>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <Button variant="outline">
-            <Link href="/collection">Back to collection</Link>
-          </Button>
-          <Button variant="outline">
-            <Link href="/trades">Open trades</Link>
-          </Button>
-        </div>
+
+        <Tabs defaultValue="swipe" className="w-full">
+          <TabsList className="grid w-full max-w-md grid-cols-2">
+            <TabsTrigger value="swipe">Swipe mode</TabsTrigger>
+            <TabsTrigger value="quick">Quick Cull</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="swipe" className="space-y-4">
+            {game ? (
+              <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+                <DecisionCard game={game} reviewedCount={reviewedCount} total={dataset.games.length} onDecide={handleDecision} onSkip={handleSkip} />
+              </div>
+            ) : (
+              <div className="mx-auto flex max-w-3xl flex-col gap-6 py-8 text-center sm:px-6">
+                <Card className="border-white/10 bg-card/75">
+                  <CardContent className="space-y-5 p-10">
+                    <h2 className="text-3xl font-semibold">Decision pass complete</h2>
+                    <p className="text-muted-foreground">You reviewed every game in the current collection. Head to results, the trades page, or run another pass from the top.</p>
+                    <div className="flex flex-wrap justify-center gap-3">
+                      <Button variant="outline" onClick={() => setQueue(dataset.games.map((item) => item.id))}>
+                        <RefreshCcw className="size-4" />
+                        Review all again
+                      </Button>
+                      <Button>
+                        <Link href="/results">
+                          See results
+                          <ArrowRight className="size-4" />
+                        </Link>
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="quick">
+            <Card className="border-white/10 bg-card/75">
+              <CardContent className="space-y-4 p-4">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-xl font-semibold">Quick Cull table</h2>
+                    <p className="text-sm text-muted-foreground">Sort by score, assign Keep / Maybe / Cull inline, and jump straight to the trade helper for moved games.</p>
+                  </div>
+                  <div className="text-sm text-muted-foreground">{reviewedCount}/{dataset.games.length} reviewed</div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[760px] text-left text-sm">
+                    <thead className="text-xs uppercase tracking-wide text-muted-foreground">
+                      <tr className="border-b border-white/10">
+                        <th className="px-3 py-3">Game</th>
+                        <th className="px-3 py-3">Cull score</th>
+                        <th className="px-3 py-3">Rating</th>
+                        <th className="px-3 py-3">Trade est.</th>
+                        <th className="px-3 py-3">Decision</th>
+                        <th className="px-3 py-3">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {quickCullGames.map((item) => {
+                        const currentDecision = decisions[String(item.id)]
+
+                        return (
+                          <tr key={item.id} className="border-b border-white/6 align-top">
+                            <td className="px-3 py-4">
+                              <div className="font-medium text-foreground">{item.name}</div>
+                              <div className="text-xs text-muted-foreground">{item.yearPublished ?? "Unknown year"} · {item.minPlayers ?? "?"}-{item.maxPlayers ?? "?"} players</div>
+                            </td>
+                            <td className="px-3 py-4">{item.cullScore}</td>
+                            <td className="px-3 py-4">{item.userRating ?? "—"}</td>
+                            <td className="px-3 py-4">{formatCurrency(item.estimatedTradeValue)}</td>
+                            <td className="px-3 py-4 capitalize">{currentDecision ?? "Undecided"}</td>
+                            <td className="px-3 py-4">
+                              <div className="flex flex-wrap gap-2">
+                                <Button size="sm" variant={currentDecision === "keep" ? "secondary" : "outline"} onClick={() => handleDecision("keep", item)}>Keep</Button>
+                                <Button size="sm" variant={currentDecision === "maybe" ? "secondary" : "outline"} onClick={() => handleDecision("maybe", item)}>Maybe</Button>
+                                <Button size="sm" variant={currentDecision === "cull" ? "destructive" : "outline"} onClick={() => handleDecision("cull", item)}>Cull</Button>
+                                {currentDecision === "cull" ? (
+                                  <Button size="sm">
+                                    <Link href={`/trades?focus=${item.id}`}>Trade page</Link>
+                                  </Button>
+                                ) : null}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+        </Tabs>
       </div>
 
-      <Tabs defaultValue="swipe" className="w-full">
-        <TabsList className="grid w-full max-w-md grid-cols-2">
-          <TabsTrigger value="swipe">Swipe mode</TabsTrigger>
-          <TabsTrigger value="quick">Quick Cull</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="swipe" className="space-y-4">
-          {game ? (
-            <div onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-              <DecisionCard game={game} reviewedCount={reviewedCount} total={dataset.games.length} onDecide={handleDecision} onSkip={handleSkip} />
-            </div>
-          ) : (
-            <div className="mx-auto flex max-w-3xl flex-col gap-6 py-8 text-center sm:px-6">
-              <Card className="border-white/10 bg-card/75">
-                <CardContent className="space-y-5 p-10">
-                  <h2 className="text-3xl font-semibold">Decision pass complete</h2>
-                  <p className="text-muted-foreground">You reviewed every game in the current collection. Head to results, the trades page, or run another pass from the top.</p>
-                  <div className="flex flex-wrap justify-center gap-3">
-                    <Button variant="outline" onClick={() => setQueue(dataset.games.map((item) => item.id))}>
-                      <RefreshCcw className="size-4" />
-                      Review all again
-                    </Button>
-                    <Button>
-                      <Link href="/results">
-                        See results
-                        <ArrowRight className="size-4" />
-                      </Link>
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="quick">
-          <Card className="border-white/10 bg-card/75">
-            <CardContent className="space-y-4 p-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h2 className="text-xl font-semibold">Quick Cull table</h2>
-                  <p className="text-sm text-muted-foreground">Sort by score, assign Keep / Maybe / Cull inline, and jump straight to the trade helper for moved games.</p>
-                </div>
-                <div className="text-sm text-muted-foreground">{reviewedCount}/{dataset.games.length} reviewed</div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[760px] text-left text-sm">
-                  <thead className="text-xs uppercase tracking-wide text-muted-foreground">
-                    <tr className="border-b border-white/10">
-                      <th className="px-3 py-3">Game</th>
-                      <th className="px-3 py-3">Cull score</th>
-                      <th className="px-3 py-3">Rating</th>
-                      <th className="px-3 py-3">Trade est.</th>
-                      <th className="px-3 py-3">Decision</th>
-                      <th className="px-3 py-3">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {quickCullGames.map((item) => {
-                      const currentDecision = decisions[String(item.id)]
-
-                      return (
-                        <tr key={item.id} className="border-b border-white/6 align-top">
-                          <td className="px-3 py-4">
-                            <div className="font-medium text-foreground">{item.name}</div>
-                            <div className="text-xs text-muted-foreground">{item.yearPublished ?? "Unknown year"} · {item.minPlayers ?? "?"}-{item.maxPlayers ?? "?"} players</div>
-                          </td>
-                          <td className="px-3 py-4">{item.cullScore}</td>
-                          <td className="px-3 py-4">{item.userRating ?? "—"}</td>
-                          <td className="px-3 py-4">{formatCurrency(item.estimatedTradeValue)}</td>
-                          <td className="px-3 py-4 capitalize">{currentDecision ?? "Undecided"}</td>
-                          <td className="px-3 py-4">
-                            <div className="flex flex-wrap gap-2">
-                              <Button size="sm" variant={currentDecision === "keep" ? "secondary" : "outline"} onClick={() => setDecision(item.id, "keep")}>Keep</Button>
-                              <Button size="sm" variant={currentDecision === "maybe" ? "secondary" : "outline"} onClick={() => setDecision(item.id, "maybe")}>Maybe</Button>
-                              <Button size="sm" variant={currentDecision === "cull" ? "destructive" : "outline"} onClick={() => setDecision(item.id, "cull")}>Cull</Button>
-                              {currentDecision === "cull" ? (
-                                <Button size="sm">
-                                  <Link href={`/trades?focus=${item.id}`}>Trade page</Link>
-                                </Button>
-                              ) : null}
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
-    </div>
+      <Dialog open={Boolean(tradePromptGame)} onOpenChange={(open) => !open && setTradePromptGame(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Also mark this game for trade?</DialogTitle>
+            <DialogDescription>
+              {tradePromptGame
+                ? `You marked ${tradePromptGame.name} as a cull. Do you want to sync that choice to BGG and flag it for trade too?`
+                : "Sync this cull to BGG as a trade item."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={handleCullOnly} disabled={syncingTrade}>Cull only</Button>
+            <Button onClick={handleCullAndTrade} disabled={syncingTrade}>
+              {syncingTrade ? "Syncing..." : "Cull + mark for trade"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 

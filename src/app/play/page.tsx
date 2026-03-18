@@ -7,11 +7,13 @@ import Link from "next/link"
 import { ChevronDown, Dices, Swords, WandSparkles } from "lucide-react"
 import { useSearchParams } from "next/navigation"
 
+import { BggLogPlayDialog } from "@/components/bgg-log-play-dialog"
 import { ClientOnly } from "@/components/client-only"
 import { EmptyState } from "@/components/empty-state"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { useBggSession } from "@/hooks/use-bgg-session"
 import { useCollection } from "@/hooks/use-collection"
 import { useDocumentTitle } from "@/hooks/use-document-title"
 import type { GameRecord } from "@/lib/types"
@@ -34,6 +36,7 @@ const wheelColors = ["#8b5cf6", "#06b6d4", "#22c55e", "#eab308", "#f97316", "#ef
 
 function PlayPageInner() {
   const { dataset, hydrated } = useCollection()
+  const { isLoggedIn } = useBggSession()
   const searchParams = useSearchParams()
   const [players, setPlayers] = useState("any")
   const [timeFilter, setTimeFilter] = useState<(typeof timeOptions)[number]["key"]>("any")
@@ -43,6 +46,8 @@ function PlayPageInner() {
   const [expandedFilters, setExpandedFilters] = useState(false)
   const [rotation, setRotation] = useState(0)
   const [selectedSpinGame, setSelectedSpinGame] = useState<GameRecord | null>(null)
+  const [selectedGame, setSelectedGame] = useState<GameRecord | null>(null)
+  const [logDialogOpen, setLogDialogOpen] = useState(false)
   const [roundGames, setRoundGames] = useState<GameRecord[]>([])
   const [roundWinners, setRoundWinners] = useState<GameRecord[]>([])
   const [pairIndex, setPairIndex] = useState(0)
@@ -130,15 +135,18 @@ function PlayPageInner() {
 
     setRotation(targetAngle)
     setSelectedSpinGame(wheelGames[winnerIndex])
+    setSelectedGame(wheelGames[winnerIndex])
   }
 
   function chooseWinner(winner: GameRecord) {
+    setSelectedGame(winner)
     const nextWinners = [...roundWinners, winner]
     const remainingGames = roundGames.slice(pairIndex + 2)
 
     if (!remainingGames.length) {
       if (nextWinners.length === 1) {
         setChampion(nextWinners[0])
+        setSelectedGame(nextWinners[0])
         return
       }
 
@@ -155,6 +163,7 @@ function PlayPageInner() {
 
       if (nextRoundGames.length === 1) {
         setChampion(nextRoundGames[0])
+        setSelectedGame(nextRoundGames[0])
         return
       }
 
@@ -170,159 +179,182 @@ function PlayPageInner() {
   }
 
   return (
-    <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
-      <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <h1 className="text-3xl font-semibold">Game Night Picker</h1>
-          <p className="text-sm text-muted-foreground">Filter your own shelf, spin the wheel, or settle it head-to-head.</p>
-        </div>
-        <Button variant="outline">
-          <Link href="/collection">Back to collection</Link>
-        </Button>
-      </div>
-
-      <Card className="border-white/10 bg-card/75">
-        <CardContent className="space-y-5 p-5">
+    <>
+      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
+        <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="mb-3 text-sm font-semibold">Player count</div>
-            <div className="flex flex-wrap gap-2">
-              <FilterPill active={players === "any"} onClick={() => setPlayers("any")}>Any</FilterPill>
-              {playerOptions.map((option) => (
-                <FilterPill key={option} active={players === option} onClick={() => setPlayers(option)}>
-                  {option === "8" ? "8+" : option}
-                </FilterPill>
-              ))}
-            </div>
+            <h1 className="text-3xl font-semibold">Game Night Picker</h1>
+            <p className="text-sm text-muted-foreground">Filter your own shelf, spin the wheel, or settle it head-to-head.</p>
           </div>
+          <Button variant="outline">
+            <Link href="/collection">Back to collection</Link>
+          </Button>
+        </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
-            <div>
-              <div className="mb-3 text-sm font-semibold">Time available</div>
-              <div className="flex flex-wrap gap-2">
-                {timeOptions.map((option) => (
-                  <FilterPill key={option.key} active={timeFilter === option.key} onClick={() => setTimeFilter(option.key)}>
-                    {option.label}
-                  </FilterPill>
-                ))}
-              </div>
-            </div>
-            <div>
-              <div className="mb-3 text-sm font-semibold">Weight</div>
-              <div className="flex flex-wrap gap-2">
-                {weightOptions.map((option) => (
-                  <FilterPill key={option.key} active={weightFilter === option.key} onClick={() => setWeightFilter(option.key)}>
-                    {option.label}
-                  </FilterPill>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          <button type="button" className="flex items-center gap-2 text-sm text-primary" onClick={() => setExpandedFilters((current) => !current)}>
-            <ChevronDown className={cn("size-4 transition", expandedFilters && "rotate-180")} />
-            Category and mechanic pills
-          </button>
-
-          {expandedFilters ? (
-            <div className="grid gap-4 lg:grid-cols-2">
-              <div>
-                <div className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">Categories</div>
-                <div className="flex flex-wrap gap-2">
-                  <FilterPill active={selectedCategory === "all"} onClick={() => setSelectedCategory("all")}>Any</FilterPill>
-                  {categories.map((item) => (
-                    <FilterPill key={item} active={selectedCategory === item} onClick={() => setSelectedCategory(item)}>{item}</FilterPill>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <div className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">Mechanics</div>
-                <div className="flex flex-wrap gap-2">
-                  <FilterPill active={selectedMechanic === "all"} onClick={() => setSelectedMechanic("all")}>Any</FilterPill>
-                  {mechanics.map((item) => (
-                    <FilterPill key={item} active={selectedMechanic === item} onClick={() => setSelectedMechanic(item)}>{item}</FilterPill>
-                  ))}
-                </div>
-              </div>
-            </div>
-          ) : null}
-        </CardContent>
-      </Card>
-
-      <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
         <Card className="border-white/10 bg-card/75">
-          <CardHeader>
-            <CardTitle>Matching games</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="text-sm text-muted-foreground">{filteredGames.length} games match right now, sorted by BGG rating.</div>
-            {filteredGames.length ? (
-              <div className="grid gap-3">
-                {filteredGames.map((game) => (
-                  <CompactResultCard key={game.id} game={game} />
+          <CardContent className="space-y-5 p-5">
+            <div>
+              <div className="mb-3 text-sm font-semibold">Player count</div>
+              <div className="flex flex-wrap gap-2">
+                <FilterPill active={players === "any"} onClick={() => setPlayers("any")}>Any</FilterPill>
+                {playerOptions.map((option) => (
+                  <FilterPill key={option} active={players === option} onClick={() => setPlayers(option)}>
+                    {option === "8" ? "8+" : option}
+                  </FilterPill>
                 ))}
               </div>
-            ) : (
-              <div className="rounded-3xl border border-dashed border-white/10 p-10 text-center text-sm text-muted-foreground">No games match these filters. Try widening player count, time, or weight.</div>
-            )}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <div className="mb-3 text-sm font-semibold">Time available</div>
+                <div className="flex flex-wrap gap-2">
+                  {timeOptions.map((option) => (
+                    <FilterPill key={option.key} active={timeFilter === option.key} onClick={() => setTimeFilter(option.key)}>
+                      {option.label}
+                    </FilterPill>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <div className="mb-3 text-sm font-semibold">Weight</div>
+                <div className="flex flex-wrap gap-2">
+                  {weightOptions.map((option) => (
+                    <FilterPill key={option.key} active={weightFilter === option.key} onClick={() => setWeightFilter(option.key)}>
+                      {option.label}
+                    </FilterPill>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <button type="button" className="flex items-center gap-2 text-sm text-primary" onClick={() => setExpandedFilters((current) => !current)}>
+              <ChevronDown className={cn("size-4 transition", expandedFilters && "rotate-180")} />
+              Category and mechanic pills
+            </button>
+
+            {expandedFilters ? (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div>
+                  <div className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">Categories</div>
+                  <div className="flex flex-wrap gap-2">
+                    <FilterPill active={selectedCategory === "all"} onClick={() => setSelectedCategory("all")}>Any</FilterPill>
+                    {categories.map((item) => (
+                      <FilterPill key={item} active={selectedCategory === item} onClick={() => setSelectedCategory(item)}>{item}</FilterPill>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <div className="mb-2 text-xs uppercase tracking-wide text-muted-foreground">Mechanics</div>
+                  <div className="flex flex-wrap gap-2">
+                    <FilterPill active={selectedMechanic === "all"} onClick={() => setSelectedMechanic("all")}>Any</FilterPill>
+                    {mechanics.map((item) => (
+                      <FilterPill key={item} active={selectedMechanic === item} onClick={() => setSelectedMechanic(item)}>{item}</FilterPill>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ) : null}
           </CardContent>
         </Card>
 
-        <div className="space-y-6">
-          <Card className="border-white/10 bg-card/75">
-            <CardHeader>
-              <CardTitle>Spin the wheel</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <SpinnerWheel games={wheelGames} rotation={rotation} />
-              <Button className="w-full" onClick={spinWheel} disabled={!wheelGames.length}>
-                <Dices className="size-4" />
-                Spin
-              </Button>
-              {selectedSpinGame ? (
-                <div className="rounded-2xl border border-primary/20 bg-primary/10 p-4">
-                  <div className="text-xs uppercase tracking-wide text-primary">Wheel pick</div>
-                  <div className="mt-1 text-lg font-semibold">{selectedSpinGame.name}</div>
-                  <div className="text-sm text-muted-foreground">{selectedSpinGame.minPlayers}-{selectedSpinGame.maxPlayers} players · {selectedSpinGame.maxPlayTime ?? selectedSpinGame.minPlayTime ?? "?"} min</div>
-                </div>
-              ) : null}
-            </CardContent>
-          </Card>
-
-          <Card className="border-white/10 bg-card/75">
-            <CardHeader>
-              <CardTitle>Can’t decide?</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {champion ? (
-                <div className="rounded-2xl border border-primary/20 bg-primary/10 p-5">
-                  <div className="text-xs uppercase tracking-wide text-primary">Bracket winner</div>
-                  <div className="mt-1 text-xl font-semibold">{champion.name}</div>
-                  <div className="mt-2 text-sm text-muted-foreground">Round {roundNumber} settled it.</div>
-                </div>
-              ) : currentPair.length >= 2 ? (
-                <>
-                  <div className="text-sm text-muted-foreground">Round {roundNumber} · choose your winner from this head-to-head matchup.</div>
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    {currentPair.map((game) => (
-                      <button key={game.id} type="button" onClick={() => chooseWinner(game)} className="rounded-3xl border border-white/10 bg-background/50 p-4 text-left transition hover:border-primary/40 hover:bg-background/70">
-                        <div className="text-lg font-semibold">{game.name}</div>
-                        <div className="mt-2 text-sm text-muted-foreground">{game.minPlayers}-{game.maxPlayers} players · {game.maxPlayTime ?? game.minPlayTime ?? "?"} min</div>
-                        <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
-                          <Swords className="size-4" />
-                          BGG {round(game.averageRating ?? game.bggAverageRating ?? 0, 1)} · Weight {round(game.averageWeight ?? 0, 1)}
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                </>
+        {selectedGame ? (
+          <Card className="border-primary/20 bg-primary/10">
+            <CardContent className="flex flex-col gap-4 p-5 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <div className="text-xs uppercase tracking-wide text-primary">Selected game</div>
+                <div className="mt-1 text-2xl font-semibold">{selectedGame.name}</div>
+                <div className="mt-1 text-sm text-muted-foreground">{selectedGame.minPlayers ?? "?"}-{selectedGame.maxPlayers ?? "?"} players · {formatPlayTime(selectedGame)}</div>
+              </div>
+              {isLoggedIn ? (
+                <Button onClick={() => setLogDialogOpen(true)}>
+                  Log this play on BGG
+                </Button>
               ) : (
-                <div className="rounded-3xl border border-dashed border-white/10 p-8 text-center text-sm text-muted-foreground">Need at least two matching games to run a head-to-head bracket.</div>
+                <Badge className="bg-white/10 text-muted-foreground">Connect BGG to log this pick</Badge>
               )}
             </CardContent>
           </Card>
+        ) : null}
+
+        <div className="grid gap-6 xl:grid-cols-[1.2fr_0.8fr]">
+          <Card className="border-white/10 bg-card/75">
+            <CardHeader>
+              <CardTitle>Matching games</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="text-sm text-muted-foreground">{filteredGames.length} games match right now, sorted by BGG rating.</div>
+              {filteredGames.length ? (
+                <div className="grid gap-3">
+                  {filteredGames.map((game) => (
+                    <CompactResultCard key={game.id} game={game} onSelect={() => setSelectedGame(game)} />
+                  ))}
+                </div>
+              ) : (
+                <div className="rounded-3xl border border-dashed border-white/10 p-10 text-center text-sm text-muted-foreground">No games match these filters. Try widening player count, time, or weight.</div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="space-y-6">
+            <Card className="border-white/10 bg-card/75">
+              <CardHeader>
+                <CardTitle>Spin the wheel</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <SpinnerWheel games={wheelGames} rotation={rotation} />
+                <Button className="w-full" onClick={spinWheel} disabled={!wheelGames.length}>
+                  <Dices className="size-4" />
+                  Spin
+                </Button>
+                {selectedSpinGame ? (
+                  <div className="rounded-2xl border border-primary/20 bg-primary/10 p-4">
+                    <div className="text-xs uppercase tracking-wide text-primary">Wheel pick</div>
+                    <div className="mt-1 text-lg font-semibold">{selectedSpinGame.name}</div>
+                    <div className="text-sm text-muted-foreground">{selectedSpinGame.minPlayers}-{selectedSpinGame.maxPlayers} players · {selectedSpinGame.maxPlayTime ?? selectedSpinGame.minPlayTime ?? "?"} min</div>
+                  </div>
+                ) : null}
+              </CardContent>
+            </Card>
+
+            <Card className="border-white/10 bg-card/75">
+              <CardHeader>
+                <CardTitle>Can’t decide?</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {champion ? (
+                  <div className="rounded-2xl border border-primary/20 bg-primary/10 p-5">
+                    <div className="text-xs uppercase tracking-wide text-primary">Bracket winner</div>
+                    <div className="mt-1 text-xl font-semibold">{champion.name}</div>
+                    <div className="mt-2 text-sm text-muted-foreground">Round {roundNumber} settled it.</div>
+                  </div>
+                ) : currentPair.length >= 2 ? (
+                  <>
+                    <div className="text-sm text-muted-foreground">Round {roundNumber} · choose your winner from this head-to-head matchup.</div>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      {currentPair.map((game) => (
+                        <button key={game.id} type="button" onClick={() => chooseWinner(game)} className="rounded-3xl border border-white/10 bg-background/50 p-4 text-left transition hover:border-primary/40 hover:bg-background/70">
+                          <div className="text-lg font-semibold">{game.name}</div>
+                          <div className="mt-2 text-sm text-muted-foreground">{game.minPlayers}-{game.maxPlayers} players · {game.maxPlayTime ?? game.minPlayTime ?? "?"} min</div>
+                          <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
+                            <Swords className="size-4" />
+                            BGG {round(game.averageRating ?? game.bggAverageRating ?? 0, 1)} · Weight {round(game.averageWeight ?? 0, 1)}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div className="rounded-3xl border border-dashed border-white/10 p-8 text-center text-sm text-muted-foreground">Need at least two matching games to run a head-to-head bracket.</div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
-    </div>
+
+      <BggLogPlayDialog game={selectedGame} open={logDialogOpen} onOpenChange={setLogDialogOpen} />
+    </>
   )
 }
 
@@ -334,7 +366,7 @@ function FilterPill({ active, onClick, children }: { active: boolean; onClick: (
   )
 }
 
-function CompactResultCard({ game }: { game: GameRecord }) {
+function CompactResultCard({ game, onSelect }: { game: GameRecord; onSelect: () => void }) {
   return (
     <div className="flex flex-col gap-3 rounded-3xl border border-white/10 bg-background/45 p-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex items-center gap-3">
@@ -350,9 +382,15 @@ function CompactResultCard({ game }: { game: GameRecord }) {
           </div>
         </div>
       </div>
-      <Button variant="outline">
-        <Link href={game.bggUrl} target="_blank" rel="noreferrer">View on BGG</Link>
-      </Button>
+      <div className="flex flex-wrap gap-2">
+        <Button variant="outline" onClick={onSelect}>
+          <WandSparkles className="size-4" />
+          Choose game
+        </Button>
+        <Button variant="outline">
+          <Link href={game.bggUrl} target="_blank" rel="noreferrer">View on BGG</Link>
+        </Button>
+      </div>
     </div>
   )
 }

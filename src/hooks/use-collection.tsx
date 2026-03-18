@@ -10,6 +10,7 @@ interface CollectionContextValue {
   dataset: CollectionDataset | null
   decisions: DecisionMap
   importDataset: (dataset: CollectionDataset) => void
+  updateGame: (gameId: number, patch: Partial<GameRecord>) => void
   setDecision: (gameId: number, decision: Decision) => void
   clearDecision: (gameId: number) => void
   resetDecisions: () => void
@@ -44,6 +45,22 @@ export function CollectionProvider({ children }: { children: React.ReactNode }) 
       return {
         dataset,
         decisions: current.dataset?.username === dataset.username ? nextDecisions : {},
+      }
+    })
+  }, [])
+
+  const updateGame = useCallback((gameId: number, patch: Partial<GameRecord>) => {
+    setState((current) => {
+      if (!current.dataset) {
+        return current
+      }
+
+      return {
+        ...current,
+        dataset: {
+          ...current.dataset,
+          games: current.dataset.games.map((game) => (game.id === gameId ? { ...game, ...patch } : game)),
+        },
       }
     })
   }, [])
@@ -98,13 +115,14 @@ export function CollectionProvider({ children }: { children: React.ReactNode }) 
       dataset: state.dataset,
       decisions: state.decisions,
       importDataset,
+      updateGame,
       setDecision,
       clearDecision,
       resetDecisions,
       reviewedCount,
       decisionGroups,
     }),
-    [clearDecision, decisionGroups, hydrated, importDataset, reviewedCount, resetDecisions, setDecision, state.dataset, state.decisions]
+    [clearDecision, decisionGroups, hydrated, importDataset, reviewedCount, resetDecisions, setDecision, state.dataset, state.decisions, updateGame]
   )
 
   return <CollectionContext.Provider value={value}>{children}</CollectionContext.Provider>
