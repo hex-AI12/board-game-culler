@@ -78,8 +78,20 @@ function DashboardPageInner() {
     )
   }
 
+  const playsTracked = dataset.games[0]?.playsTracked ?? false
+
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-8 sm:px-6 lg:px-8">
+      {/* Scoring mode indicator */}
+      <div className={`flex items-center gap-3 rounded-2xl border px-5 py-3 text-sm ${playsTracked ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-200" : "border-amber-500/20 bg-amber-500/10 text-amber-200"}`}>
+        <span className="font-medium">{playsTracked ? "📊 Play-weighted scoring" : "🎯 Rating-focused scoring"}</span>
+        <span className="text-muted-foreground">
+          {playsTracked
+            ? "Play history detected — frequency and recency are weighted heavily in cull scores."
+            : "No play logs detected — scores lean on your ratings, mechanic redundancy, and reacquisition risk instead."}
+        </span>
+      </div>
+
       <section className="grid gap-4 xl:grid-cols-4 md:grid-cols-2">
         <SummaryCard icon={<LibraryBig className="size-5" />} label="Collection size" value={dataset.games.length} hint="Owned base games only" />
         <SummaryCard icon={<Flame className="size-5" />} label="High cull fit" value={dataset.games.filter((game) => game.cullScore >= 75).length} hint="Score ≥ 75" />

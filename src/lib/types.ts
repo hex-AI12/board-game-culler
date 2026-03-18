@@ -61,6 +61,7 @@ export interface GameRecord extends CollectionItem, GameDetails, PlaySummary {
   tradeUrl: string
   estimatedTradeValue: number
   primaryMechanic?: string
+  playsTracked: boolean
   cullScore: number
   cullScoreLabel: string
   cullBreakdown: CullScoreBreakdown

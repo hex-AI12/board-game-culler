@@ -1,16 +1,34 @@
 import type { CollectionDataset, CullFactorBreakdown, CullScoreBreakdown, GameRecord } from "@/lib/types"
 import { average, clamp, monthsSince, round } from "@/lib/utils"
 
-// Play frequency is nearly useless when plays aren't logged.
-// Redistribute that weight to signals we actually have:
-// ratings, redundancy, community consensus, and reacquisition risk.
-const WEIGHTS: Record<keyof CullFactorBreakdown, number> = {
+// Two weight profiles — auto-selected based on whether the user logs plays.
+const WEIGHTS_WITH_PLAYS: Record<keyof CullFactorBreakdown, number> = {
+  playFrequency: 0.30,
+  yourRating: 0.25,
+  ratingGap: 0.10,
+  redundancy: 0.15,
+  weightMismatch: 0.10,
+  availability: 0.10,
+}
+
+const WEIGHTS_NO_PLAYS: Record<keyof CullFactorBreakdown, number> = {
   playFrequency: 0.05,
   yourRating: 0.35,
   ratingGap: 0.15,
   redundancy: 0.20,
   weightMismatch: 0.10,
   availability: 0.15,
+}
+
+/**
+ * Detect whether a user actually tracks plays.
+ * Heuristic: if ≥15% of owned games have at least 1 logged play,
+ * treat play data as meaningful.
+ */
+function detectPlaysTracked(games: Array<{ playCount?: number }>): boolean {
+  if (games.length === 0) return false
+  const withPlays = games.filter((g) => g.playCount && g.playCount > 0).length
+  return withPlays / games.length >= 0.15
 }
 
 function scorePlayFrequency(game: Partial<GameRecord>) {
@@ -125,7 +143,7 @@ function estimateTradeValue(game: Partial<GameRecord>) {
   return round(clamp(base + ratingBoost + popularityBoost + scarcityBoost + weightBoost, 5, 85))
 }
 
-export function scoreGames(games: Omit<GameRecord, "estimatedTradeValue" | "cullScore" | "cullScoreLabel" | "cullBreakdown" | "primaryMechanic" | "bggUrl" | "tradeUrl">[]) {
+export function scoreGames(games: Omit<GameRecord, "estimatedTradeValue" | "cullScore" | "cullScoreLabel" | "cullBreakdown" | "primaryMechanic" | "playsTracked" | "bggUrl" | "tradeUrl">[]) {
   const mechanicCounts = new Map<string, number>()
 
   for (const game of games) {
@@ -134,11 +152,24 @@ export function scoreGames(games: Omit<GameRecord, "estimatedTradeValue" | "cull
     }
   }
 
-  // When plays aren't logged, estimate preferred weight from
-  // user-rated games (rated = signal of engagement) or all games if none rated.
-  const ratedGames = games.filter((g) => g.userRating && g.userRating > 0 && g.averageWeight)
-  const weightPool = ratedGames.length > 0 ? ratedGames : games.filter((g) => g.averageWeight)
-  const preferredWeight = average(weightPool.map((g) => g.averageWeight as number))
+  // Auto-detect whether this user logs plays
+  const playsTracked = detectPlaysTracked(games)
+  const WEIGHTS = playsTracked ? WEIGHTS_WITH_PLAYS : WEIGHTS_NO_PLAYS
+
+  // Preferred weight: use play-weighted average if plays are tracked,
+  // otherwise fall back to rated games or full collection.
+  let preferredWeight: number
+  if (playsTracked) {
+    const weightedWeights = games.flatMap((game) => {
+      if (!game.averageWeight || !game.playCount) return []
+      return Array.from({ length: Math.min(game.playCount, 8) }, () => game.averageWeight as number)
+    })
+    preferredWeight = average(weightedWeights)
+  } else {
+    const ratedGames = games.filter((g) => g.userRating && g.userRating > 0 && g.averageWeight)
+    const weightPool = ratedGames.length > 0 ? ratedGames : games.filter((g) => g.averageWeight)
+    preferredWeight = average(weightPool.map((g) => g.averageWeight as number))
+  }
 
   return games
     .map((game) => {
@@ -167,6 +198,7 @@ export function scoreGames(games: Omit<GameRecord, "estimatedTradeValue" | "cull
       return {
         ...game,
         primaryMechanic,
+        playsTracked,
         estimatedTradeValue: estimateTradeValue(game),
         cullScore: total,
         cullScoreLabel: labelForScore(total),
