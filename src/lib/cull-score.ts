@@ -1,18 +1,22 @@
 import type { CollectionDataset, CullFactorBreakdown, CullScoreBreakdown, GameRecord } from "@/lib/types"
 import { average, clamp, monthsSince, round } from "@/lib/utils"
 
+// Play frequency is nearly useless when plays aren't logged.
+// Redistribute that weight to signals we actually have:
+// ratings, redundancy, community consensus, and reacquisition risk.
 const WEIGHTS: Record<keyof CullFactorBreakdown, number> = {
-  playFrequency: 0.3,
-  yourRating: 0.25,
-  ratingGap: 0.1,
-  redundancy: 0.15,
-  weightMismatch: 0.1,
-  availability: 0.1,
+  playFrequency: 0.05,
+  yourRating: 0.35,
+  ratingGap: 0.15,
+  redundancy: 0.20,
+  weightMismatch: 0.10,
+  availability: 0.15,
 }
 
 function scorePlayFrequency(game: Partial<GameRecord>) {
+  // No play data at all → return neutral (plays not tracked)
   if (!game.playCount) {
-    return 100
+    return 50
   }
 
   const months = monthsSince(game.lastPlayed) ?? 18
@@ -84,8 +88,8 @@ function labelForScore(score: number) {
 function buildInsights(game: Partial<GameRecord>, breakdown: CullFactorBreakdown) {
   const insights: string[] = []
 
-  if (breakdown.playFrequency >= 75) {
-    insights.push(game.playCount ? "It has been gathering dust for over a year." : "You own it, but it has never hit the table.")
+  if (breakdown.playFrequency >= 75 && game.playCount) {
+    insights.push("It has been gathering dust for over a year.")
   }
 
   if (breakdown.yourRating >= 65) {
@@ -130,14 +134,11 @@ export function scoreGames(games: Omit<GameRecord, "estimatedTradeValue" | "cull
     }
   }
 
-  const weightedWeights = games.flatMap((game) => {
-    if (!game.averageWeight || !game.playCount) {
-      return []
-    }
-
-    return Array.from({ length: Math.min(game.playCount, 8) }, () => game.averageWeight as number)
-  })
-  const preferredWeight = average(weightedWeights)
+  // When plays aren't logged, estimate preferred weight from
+  // user-rated games (rated = signal of engagement) or all games if none rated.
+  const ratedGames = games.filter((g) => g.userRating && g.userRating > 0 && g.averageWeight)
+  const weightPool = ratedGames.length > 0 ? ratedGames : games.filter((g) => g.averageWeight)
+  const preferredWeight = average(weightPool.map((g) => g.averageWeight as number))
 
   return games
     .map((game) => {
