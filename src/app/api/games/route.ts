@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server"
 
 import { fetchGameDetails } from "@/lib/bgg"
 
+const MAX_IDS = 500
+
 export async function GET(request: NextRequest) {
   const ids = request.nextUrl.searchParams
     .get("ids")
@@ -11,6 +13,10 @@ export async function GET(request: NextRequest) {
 
   if (!ids?.length) {
     return NextResponse.json({ error: "Missing ids" }, { status: 400 })
+  }
+
+  if (ids.length > MAX_IDS) {
+    return NextResponse.json({ error: `Too many ids: max ${MAX_IDS}` }, { status: 400 })
   }
 
   try {
