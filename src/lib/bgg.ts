@@ -197,12 +197,17 @@ export async function fetchGameDetails(ids: number[]): Promise<GameDetails[]> {
   return results.flat()
 }
 
+// BGG plays API returns 100 records per page. Cap at 200 pages (20,000 plays)
+// to guard against infinite loops from malformed responses where total stays
+// at POSITIVE_INFINITY or BGG returns an unexpectedly large value.
+const MAX_PLAY_PAGES = 200
+
 export async function fetchPlays(username: string): Promise<PlaySummary[]> {
   const byGame = new Map<number, { playCount: number; lastPlayed?: string }>()
   let page = 1
   let total = Number.POSITIVE_INFINITY
 
-  while ((page - 1) * 100 < total) {
+  while ((page - 1) * 100 < total && page <= MAX_PLAY_PAGES) {
     const xml = await fetchXml(`/plays?username=${encodeURIComponent(username)}&subtype=boardgame&page=${page}`)
     const parsed = parser.parse(xml)
     total = Number(parsed.plays?.total ?? 0)
